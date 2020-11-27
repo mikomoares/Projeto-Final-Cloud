@@ -130,3 +130,7 @@ dmypy.json
 
 mikomoares_oh.pem
 mikomoares_nv.pem
+aws
+awscliv2.zip
+credentials
+config
