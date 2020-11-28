@@ -70,10 +70,6 @@ try:
         GroupId=security_group_id_oh,
         IpPermissions=[
             {'IpProtocol': 'tcp',
-             'FromPort': 80,
-             'ToPort': 80,
-             'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
-            {'IpProtocol': 'tcp',
              'FromPort': 22,
              'ToPort': 22,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
@@ -107,17 +103,13 @@ try:
         GroupId=security_group_id_nv,
         IpPermissions=[
             {'IpProtocol': 'tcp',
-             'FromPort': 80,
-             'ToPort': 80,
+             'FromPort': 8080,
+             'ToPort': 8080,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
             {'IpProtocol': 'tcp',
              'FromPort': 22,
              'ToPort': 22,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
-            {'IpProtocol':'tcp',
-             'FromPort': 5432,
-             'ToPort': 5432,
-             'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}
         ])
     print("Security group {} criado com sucesso (;".format(security_group_name_nv))
 except ClientError as e:
@@ -135,10 +127,10 @@ user_data_oh = '''#!/bin/bash
      sudo sed -i "a\host all all 0.0.0.0/0 md5" /etc/postgresql/10/main/pg_hba.conf
      sudo systemctl restart postgresql
      '''
-
+waiter = client_oh.get_waiter('instance_status_ok')
 instance_oh = ec2_oh.create_instances(
     ImageId="ami-0dd9f0e7df0f0a138",
-    SecurityGroupIds=[security_group_name_oh],
+    SecurityGroupIds=[security_group_id_oh],
     KeyName=key_name_oh,
     MinCount=1,
     MaxCount=1,
@@ -146,24 +138,27 @@ instance_oh = ec2_oh.create_instances(
     InstanceType="t2.micro",
     TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'Name', 'Value': 'Postgres'}]}]
 )
-instance_oh[0].wait_until_running()
+waiter.wait(InstanceIds=[instance_oh[0].id])
 
 print("Instancia postgress(oh) criada com sucesso (;")
 
 
 #Criando script e instancia north virginia
 print("criando instancia Django(nv)......")
-user_data_nv = '''#!/bin/bash
+user_data_nv = '''#!/bin/sh
+     cd /home/ubuntu
      sudo apt update
-     git clone https://github.com/mikomoares/tasks.git && mv tasks /home/ubuntu
-     sudo sed -i 's/node1/{}/' /home/ubuntu/tasks/portfolio/settings.py 
-     /home/ubuntu/tasks/./install.sh
+     git clone https://github.com/mikomoares/tasks.git 
+     sudo sed -i "s/node1/{}/g" /home/ubuntu/tasks/portfolio/settings.py 
+     cd tasks
+     ./install.sh
+     cd ..
      reboot
-     '''.format(instance_oh)
+     '''.format(client_oh.describe_instances(InstanceIds=[instance_oh[0].id])['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['Association']['PublicIp'])
 
 instance_nv = ec2_nv.create_instances(
     ImageId="ami-0ac73f33a1888c64a",
-    SecurityGroupIds=[security_group_name_nv],
+    SecurityGroupIds=[security_group_id_nv],
     KeyName=key_name_nv,
     MinCount=1,
     MaxCount=1,
