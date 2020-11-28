@@ -17,6 +17,7 @@ session_nv = boto3.session.Session(region_name=REGION_NV)
 
 
 #Criando clientes
+print("conectando......")
 ec2_oh = boto3.resource("ec2", region_name=REGION_OH)
 ec2_nv = boto3.resource("ec2", region_name=REGION_NV)
 client_oh = boto3.client("ec2", region_name=REGION_OH)
@@ -28,27 +29,28 @@ key_name_oh = "mikomoares_oh1"
 key_name_nv = "mikomoares_nv1"
 
 try:
-    print("Criando chave")
+    print("Criando chave......")
     key_file_name = "/home/mikomoares/{}.pem".format(key_name_oh)
     key_response = client_oh.create_key_pair(KeyName=key_name_oh)
     with open(key_file_name, "w") as f: f.write(key_response['KeyMaterial'])
     os.system("chmod 400 {}".format(key_file_name))
-    print("chave criada com sucesso")
+    print("chave criada com sucesso (;")
 except:
-    print("chave já existente")
+    print("chave já existente /:")
 
 try:
-    print("Criando chave")
+    print("Criando chave......")
     key_file_name = "/home/mikomoares/{}.pem".format(key_name_nv)
     key_response = client_nv.create_key_pair(KeyName=key_name_nv)
     with open(key_file_name, "w") as f: f.write(key_response['KeyMaterial'])
     os.system("chmod 400 {}".format(key_file_name))
-    print("chave criada com sucesso")
+    print("chave criada com sucesso (;")
 except:
-    print("chave já existente")
+    print("chave já existente /:")
 
 
 #Criando security group
+print("criando security group......")
 security_group_name_oh = "security1"
 security_response = client_oh.describe_security_groups()
 for i in security_response['SecurityGroups']:
@@ -63,7 +65,6 @@ try:
                                          Description='DESCRIPTION',
                                          VpcId=vpc_id)
     security_group_id_oh = response['GroupId']
-    print('Security Group criado com sucesso %s vpc %s.' % (security_group_id_oh, vpc_id))
 
     data = client_oh.authorize_security_group_ingress(
         GroupId=security_group_id_oh,
@@ -81,12 +82,12 @@ try:
              'ToPort': 5432,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}
         ])
-    print("Security group {} criado com sucesso".format(security_group_name_oh))
+    print("Security group {} criado com sucesso (;".format(security_group_name_oh))
 except ClientError as e:
     print(e)
 
 
-
+print("criando security group......")
 security_group_name_nv = "security2"
 security_response = client_nv.describe_security_groups()
 for i in security_response['SecurityGroups']:
@@ -101,7 +102,6 @@ try:
                                          Description='DESCRIPTION',
                                          VpcId=vpc_id)
     security_group_id_nv = response['GroupId']
-    print('Security Group criado com sucesso %s vpc %s.' % (security_group_id_nv, vpc_id))
 
     data = client_nv.authorize_security_group_ingress(
         GroupId=security_group_id_nv,
@@ -119,12 +119,14 @@ try:
              'ToPort': 5432,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]}
         ])
-    print("Security group {} criado com sucesso".format(security_group_name_nv))
+    print("Security group {} criado com sucesso (;".format(security_group_name_nv))
 except ClientError as e:
     print(e)
 
 
-#Criando scripts
+#Criando scripts e instancia ohio
+
+print("criando instancia postgress(oh)......")
 user_data_oh = '''#!/bin/bash
      sudo apt update
      sudo apt install postgresql postgresql-contrib -y
@@ -134,8 +136,7 @@ user_data_oh = '''#!/bin/bash
      sudo systemctl restart postgresql
      '''
 
-#Criando instancias
-ec2_oh.create_instances(
+instance_oh = ec2_oh.create_instances(
     ImageId="ami-0dd9f0e7df0f0a138",
     SecurityGroupIds=[security_group_name_oh],
     KeyName=key_name_oh,
@@ -143,20 +144,48 @@ ec2_oh.create_instances(
     MaxCount=1,
     UserData = user_data_oh,
     InstanceType="t2.micro",
-    TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'nome', 'Value': 'Postgress',},],},]
+    TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'Name', 'Value': 'Postgres'}]}]
 )
+instance_oh[0].wait_until_running()
 
-print("Instancia Ohio criada com sucesso")
+print("Instancia postgress(oh) criada com sucesso (;")
 
 
-ec2_nv.create_instances(
+#Criando script e instancia north virginia
+print("criando instancia Django(nv)......")
+user_data_nv = '''#!/bin/bash
+     sudo apt update
+     git clone https://github.com/mikomoares/tasks.git && mv tasks /home/ubuntu
+     sudo sed -i 's/node1/{}/' /home/ubuntu/tasks/portfolio/settings.py 
+     /home/ubuntu/tasks/./install.sh
+     reboot
+     '''.format(instance_oh)
+
+instance_nv = ec2_nv.create_instances(
     ImageId="ami-0ac73f33a1888c64a",
     SecurityGroupIds=[security_group_name_nv],
     KeyName=key_name_nv,
     MinCount=1,
     MaxCount=1,
+    UserData = user_data_nv,
     InstanceType="t2.micro",
-    TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'Name', 'Value': 'NV',},],},]
+    TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'Name', 'Value': 'Django'}]}]
 )
+instance_nv[0].wait_until_running()
 
-print("Instancia North Virginia criada com sucesso")
+print("Instancia North Virginia criada com sucesso (;")
+
+
+#Cria imagem da ORM
+print("criando imagem de django.....")
+waiter = client_nv.get_waiter('image_available')
+image = client_nv.create_image(InstanceId=instance_nv[0].id, NoReboot=True, Name="Django image")
+waiter.wait(ImageIds=[image["ImageId"]])
+print("imagem de Django criada (;")
+
+
+#Cria LoadBalance
+
+
+
+#Cria AutoScaling
