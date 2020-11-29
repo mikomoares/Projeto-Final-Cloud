@@ -3,6 +3,7 @@ import boto3
 from decouple import config
 import os
 from botocore.exceptions import ClientError
+import time
 
 
 #Definindo as variáveis
@@ -22,6 +23,10 @@ ec2_oh = boto3.resource("ec2", region_name=REGION_OH)
 ec2_nv = boto3.resource("ec2", region_name=REGION_NV)
 client_oh = boto3.client("ec2", region_name=REGION_OH)
 client_nv = boto3.client("ec2", region_name=REGION_NV)
+client_lb = boto3.client('elb', region_name=REGION_NV)
+client_as = boto3.client('autoscaling', region_name=REGION_NV)
+client = boto3.client('autoscaling', region_name=REGION_NV)
+
 
 
 #Criando chave
@@ -117,7 +122,6 @@ except ClientError as e:
 
 
 #Criando scripts e instancia ohio
-
 print("criando instancia postgress(oh)......")
 user_data_oh = '''#!/bin/bash
      sudo apt update
@@ -179,8 +183,76 @@ waiter.wait(ImageIds=[image["ImageId"]])
 print("imagem de Django criada (;")
 
 
+#Deletando instancia Django
+try:
+    print("deletando instancia base de Django......")
+    all_instaces = ec2_nv.instances.filter(Filters=[
+        {'Name': 'tag:Name', 'Values': ['Django']}
+    ])
+    instaces_id = []
+    for instance in all_instaces:
+        instaces_id.append(instance.id)
+        waiter = client_nv.get_waiter('instance_terminated')
+        all_instaces.terminate()
+        waiter.wait(InstanceIds=instaces_id)        
+    print ("Instancia deletada (;")
+except:
+        print("\nERRO:", e)
+
+
 #Cria LoadBalance
+print("criando Load Balancer......")
+client_lb.create_load_balancer(
+    LoadBalancerName="LoadBalancer",
+    Listeners=[
+        {
+            'Protocol':'HTTP',
+            'LoadBalancerPort':8080,
+            'InstancePort':8080
+        }
+    ],
+    AvailabilityZones=[
+        'us-west-2a',
+        'us-west-2b',
+        'us-west-2c',
+        'us-west-2d',
+    ],
+    SecurityGroups=[security_group_id_nv],
+    Tags=[
+        {'Key': 'Name', 'Value': 'LoadBalancer'}
+    ]
+)
+time.sleep(10)
+print("Load Balance criado com sucesso (;")
 
 
 
-#Cria AutoScaling
+#Cria Launch Configuration
+print("criando Launch Configuration......")
+client_as.create_launch_configuration(
+    LaunchConfigurationName="LaunchConfiguration",
+    ImageId=image["ImageId"],
+    KeyName=key_name_nv,
+    SecurityGroups=[security_group_id_nv],
+    InstanceType='t2.micro'
+)
+print("Launch Configuration criado com sucesso (;")
+
+
+#Cria Auto Scaling
+print("criando Auto Scaling......")
+client.create_auto_scaling_group(
+    AutoScalingGroupName="AutoScalingGroup",
+    LaunchConfigurationName="LaunchConfiguration",
+    MinSize=2,
+    MaxSize=5,
+    DesiredCapacity=2,
+    AvailabilityZones=[
+        'us-west-2a', 
+        'us-west-2b', 
+        'us-west-2c',
+        'us-west-2d', 
+    ],
+    LoadBalancerNames=["LoadBalancer"],
+)
+print("Auto Scaling criado com sucesso (;")
