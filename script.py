@@ -25,14 +25,79 @@ client_oh = boto3.client("ec2", region_name=REGION_OH)
 client_nv = boto3.client("ec2", region_name=REGION_NV)
 client_lb = boto3.client('elb', region_name=REGION_NV)
 client_as = boto3.client('autoscaling', region_name=REGION_NV)
-client = boto3.client('autoscaling', region_name=REGION_NV)
+
+
+
+
+
+
+#Deletando para rodar novamente
+try:
+    ok = False
+    response = client_as.delete_auto_scaling_group(AutoScalingGroupName='AutoScalingGroup', ForceDelete=True)
+    while not ok:
+        print("deletando auto scaling......")
+        if len(client_as.describe_auto_scaling_groups(AutoScalingGroupNames=['AutoScalingGroup'])['AutoScalingGroups'])==0:
+             ok=True
+        time.sleep(5)
+    print("auto scaling deletado (;")
+except:
+    pass
+
+try:
+    ok = False
+    response = client_as.delete_launch_configuration(LaunchConfigurationName='LaunchConfiguration')
+    while not ok:
+        print("deletando launch configuration......")
+        if len(client_as.describe_launch_configurations(AutoScalingGroupNames=['LaunchConfiguration'])['LaunchConfigurations'])==0:
+             ok=True
+        time.sleep(5)
+        print("launch configuration deletado (;")
+except:
+    pass
+
+try:
+    ok = False
+    response = client_lb.delete_load_balancer(LoadBalancerName="LoadBalancer")
+
+    while not ok:
+        print("deletando load balancer......")
+        if len(client_lb.describe_load_balancers(Names=['LoadBalancer'])['LoadBalancers'])==0:
+                ok=True
+        time.sleep(5)
+        print("load balancer deletado (;")
+except:
+    pass
+
+try:
+    images = client_nv.describe_images(Filters=[{'Name': 'name', 'Values': ["Django image"]}])
+    ok = False
+    response = client_nv.deregister_image(ImageId=images["Images"][0]["ImageId"])
+    while not ok:
+        print("deletando imagens......")
+        if len(client_nv.describe_images(Filters = [{'Name': 'name', 'Values': ["Django image"]}])==0) :
+                ok=True
+        time.sleep(5)
+        print("imagens deletadas (;")
+except:
+    pass
+
+all_instaces = ec2_oh.instances.filter(Filters=[
+    {'Name': 'tag:Name', 'Values': ['Postgres']}
+])
+instaces_id = []
+for instance in all_instaces:
+    instaces_id.append(instance.id)
+    waiter = client_oh.get_waiter('instance_terminated')
+    all_instaces.terminate()
+    waiter.wait(InstanceIds=instaces_id)        
+print ("Instancia deletada (;")
 
 
 
 #Criando chave
 key_name_oh = "mikomoares_oh1"
 key_name_nv = "mikomoares_nv1"
-
 try:
     print("Criando chave......")
     key_file_name = "/home/mikomoares/{}.pem".format(key_name_oh)
@@ -211,7 +276,7 @@ except:
 
 #Cria LoadBalance
 print("criando Load Balancer......")
-client_lb.create_load_balancer(
+loadbalancer = client_lb.create_load_balancer(
     LoadBalancerName="LoadBalancer",
     Listeners=[
         {
@@ -231,7 +296,10 @@ client_lb.create_load_balancer(
         {'Key': 'Name', 'Value': 'LoadBalancer'}
     ]
 )
+url = loadbalancer['DNSName']
+with open("URLName.txt", "w") as f: f.write(url)
 print("Load Balance criado com sucesso (;")
+print ("URL:", url)
 
 
 
@@ -249,7 +317,7 @@ print("Launch Configuration criado com sucesso (;")
 
 #Cria Auto Scaling
 print("criando Auto Scaling......")
-client.create_auto_scaling_group(
+client_as.create_auto_scaling_group(
     AutoScalingGroupName="AutoScalingGroup",
     LaunchConfigurationName="LaunchConfiguration",
     MinSize=2,

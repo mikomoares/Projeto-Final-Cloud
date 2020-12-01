@@ -128,6 +128,8 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+.pem
+
 mikomoares_oh.pem
 mikomoares_nv.pem
 aws
