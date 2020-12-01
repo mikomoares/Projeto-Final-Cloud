@@ -108,6 +108,10 @@ try:
         GroupId=security_group_id_nv,
         IpPermissions=[
             {'IpProtocol': 'tcp',
+             'FromPort': 80,
+             'ToPort': 80,
+             'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
+            {'IpProtocol': 'tcp',
              'FromPort': 8080,
              'ToPort': 8080,
              'IpRanges': [{'CidrIp': '0.0.0.0/0'}]},
@@ -152,7 +156,7 @@ print("criando instancia Django(nv)......")
 user_data_nv = '''#!/bin/sh
      cd /home/ubuntu
      sudo apt update
-     git clone https://github.com/mikomoares/tasks.git 
+     git clone https://github.com/mikomoares/tasks
      sudo sed -i "s/node1/{}/g" /home/ubuntu/tasks/portfolio/settings.py 
      cd tasks
      ./install.sh
@@ -171,7 +175,12 @@ instance_nv = ec2_nv.create_instances(
     TagSpecifications=[{'ResourceType': 'instance', 'Tags': [{'Key': 'Name', 'Value': 'Django'}]}]
 )
 instance_nv[0].wait_until_running()
-
+response = client_nv.describe_instance_status(InstanceIds=[instance_nv[0].id])
+#print(response)
+print ("checando status da instancia......")
+while (response['InstanceStatuses'][0]['InstanceStatus']['Status'] != 'ok'):
+    time.sleep(25)
+    response = client_nv.describe_instance_status(InstanceIds=[instance_nv[0].id])
 print("Instancia North Virginia criada com sucesso (;")
 
 
@@ -207,7 +216,7 @@ client_lb.create_load_balancer(
     Listeners=[
         {
             'Protocol':'HTTP',
-            'LoadBalancerPort':8080,
+            'LoadBalancerPort':80,
             'InstancePort':8080
         }
     ],
@@ -222,7 +231,6 @@ client_lb.create_load_balancer(
         {'Key': 'Name', 'Value': 'LoadBalancer'}
     ]
 )
-time.sleep(10)
 print("Load Balance criado com sucesso (;")
 
 
